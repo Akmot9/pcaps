@@ -1,0 +1,9 @@
+[package]
+name = "sim_packets"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pnet = "0.35.0"
+tun-tap = "0.1.4"
+pcap = "2.0.0"
