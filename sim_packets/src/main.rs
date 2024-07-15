@@ -1,24 +1,38 @@
 extern crate pcap;
 extern crate pnet;
+extern crate clap;
 
 use pcap::Capture;
 use pnet::datalink::{self, Channel, DataLinkSender};
-use std::env;
+use clap::{Arg, Command};
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
 use std::process;
 
 fn main() {
-    // Récupérer le type de fichier, le chemin du fichier et l'interface réseau depuis les arguments de la ligne de commande
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 4 {
-        eprintln!("Usage: {} <file type: pcap|hex> <file path> <network interface>", args[0]);
-        process::exit(1);
-    }
-    let file_type = &args[1];
-    let file_path = &args[2];
-    let interface_name = &args[3];
+    // Configuration des arguments de la ligne de commande avec clap
+    let matches = Command::new("Packet Sender")
+        .version("1.0")
+        .author("Cyprien AVICO <votre.email@example.com>")
+        .about("Envoie des paquets réseau à partir de fichiers pcap ou hex")
+        .arg(Arg::new("file_type")
+            .help("Type de fichier: pcap ou hex")
+            .required(true)
+            .index(1))
+        .arg(Arg::new("file_path")
+            .help("Chemin du fichier à lire")
+            .required(true)
+            .index(2))
+        .arg(Arg::new("interface_name")
+            .help("Nom de l'interface réseau")
+            .required(true)
+            .index(3))
+        .get_matches();
+
+    let file_type = matches.get_one::<String>("file_type").expect("file_type argument missing");
+    let file_path = matches.get_one::<String>("file_path").expect("file_path argument missing");
+    let interface_name = matches.get_one::<String>("interface_name").expect("interface_name argument missing");
 
     // Trouver l'interface réseau
     let interfaces = datalink::interfaces();
