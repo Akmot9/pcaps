@@ -1,5 +1,3 @@
-extern crate pcap;
-extern crate pnet;
 
 use pcap::Capture;
 use pnet::datalink::{self, Channel, DataLinkSender};
