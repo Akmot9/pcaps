@@ -46,7 +46,7 @@ cargo build --release
 
 Pour envoyer des paquets à partir d'un fichier PCAP :
 ```sh
-sudo cargo run --release -- pcap <chemin_du_fichier_pcap> <nom_de_l_interface_reseau>
+git config pull.rebase false
 ```
 
 #### Utilisation avec un fichier hexadécimal
