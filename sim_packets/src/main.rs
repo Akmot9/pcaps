@@ -1,4 +1,3 @@
-
 use pcap::Capture;
 use pnet::datalink::{self, Channel, DataLinkSender};
 use clap::{Arg, Command};
@@ -7,14 +6,20 @@ use std::io::{self, BufRead};
 use std::path::Path;
 use std::process;
 
+#[derive(Debug)]
+struct Packet {
+    name: String,     // Type of the packet (e.g., DNS, HTTP)
+    hexdump: String,  // Hex dump of the packet
+}
+
 fn main() {
     // Configuration des arguments de la ligne de commande avec clap
     let matches = Command::new("Packet Sender")
         .version("1.0")
         .author("Cyprien AVICO <votre.email@example.com>")
-        .about("Envoie des paquets réseau à partir de fichiers pcap ou hex")
+        .about("Envoie des paquets réseau à partir de fichiers pcap, hex, ou pkthex")
         .arg(Arg::new("file_type")
-            .help("Type de fichier: pcap ou hex")
+            .help("Type de fichier: pcap, hex, ou pkthex")
             .required(true)
             .index(1))
         .arg(Arg::new("file_path")
@@ -44,33 +49,90 @@ fn main() {
 
     // Traiter le fichier selon son type
     if file_type == "pcap" {
-        // Ouvrir le fichier pcap
-        let mut cap = Capture::from_file(file_path).expect("Failed to open pcap file");
-
-        // Itérer sur les paquets, les afficher en hexadécimal et les envoyer sur l'interface réseau
-        while let Ok(packet) = cap.next_packet() {
-            print_packet_in_hex(&packet.data);
-            send_packet(&mut tx, packet.data.to_vec());
-        }
+        handle_pcap_file(file_path, &mut tx);
     } else if file_type == "hex" {
-        // Ouvrir le fichier hex
-        if let Ok(lines) = read_lines(file_path) {
-            for line in lines {
-                if let Ok(hex_string) = line {
-                    if let Ok(packet) = hex_to_bytes(&hex_string) {
-                        print_packet_in_hex(&packet);
-                        send_packet(&mut tx, packet);
-                    } else {
-                        eprintln!("Failed to parse hex string: {}", hex_string);
-                    }
+        handle_hex_file(file_path, &mut tx);
+    } else if file_type == "pkthex" {
+        handle_pkthex_file(file_path, &mut tx);
+    } else {
+        eprintln!("Unknown file type: {}. Use 'pcap', 'hex', or 'pkthex'.", file_type);
+        process::exit(1);
+    }
+}
+
+// Fonction pour gérer les fichiers pcap
+fn handle_pcap_file(file_path: &str, tx: &mut Box<dyn DataLinkSender>) {
+    let mut cap = Capture::from_file(file_path).expect("Failed to open pcap file");
+
+    // Itérer sur les paquets, les afficher en hexadécimal et les envoyer sur l'interface réseau
+    while let Ok(packet) = cap.next_packet() {
+        print_packet_in_hex(&packet.data);
+        send_packet(tx, packet.data.to_vec());
+    }
+}
+
+// Fonction pour gérer les fichiers hex
+fn handle_hex_file(file_path: &str, tx: &mut Box<dyn DataLinkSender>) {
+    if let Ok(lines) = read_lines(file_path) {
+        for line in lines {
+            if let Ok(hex_string) = line {
+                if let Ok(packet) = hex_to_bytes(&hex_string) {
+                    print_packet_in_hex(&packet);
+                    send_packet(tx, packet);
+                } else {
+                    eprintln!("Failed to parse hex string: {}", hex_string);
                 }
             }
-        } else {
-            eprintln!("Failed to open hex file: {}", file_path);
         }
     } else {
-        eprintln!("Unknown file type: {}. Use 'pcap' or 'hex'.", file_type);
-        process::exit(1);
+        eprintln!("Failed to open hex file: {}", file_path);
+    }
+}
+
+// Fonction pour gérer les fichiers pkthex
+fn handle_pkthex_file(file_path: &str, tx: &mut Box<dyn DataLinkSender>) {
+    if let Ok(lines) = read_lines(file_path) {
+        let mut current_packet = Packet {
+            name: String::new(),
+            hexdump: String::new(),
+        };
+
+        for line in lines {
+            if let Ok(line) = line {
+                if line.starts_with("[Packet]") {
+                    // If we're starting a new packet, process the previous one
+                    if !current_packet.name.is_empty() && !current_packet.hexdump.is_empty() {
+                        if let Ok(packet_bytes) = hex_to_bytes(&current_packet.hexdump) {
+                            println!("Sending packet of type: {}", current_packet.name);  // Print the packet type
+                            send_packet(tx, packet_bytes);
+                        } else {
+                            eprintln!("Failed to parse hex string for packet type {}: {}", current_packet.name, current_packet.hexdump);
+                        }
+                    }
+                    // Reset for the next packet
+                    current_packet = Packet {
+                        name: String::new(),
+                        hexdump: String::new(),
+                    };
+                } else if line.starts_with("Type: ") {
+                    current_packet.name = line[6..].trim().to_string();
+                } else if line.starts_with("HexDump: ") {
+                    current_packet.hexdump = line[9..].trim().to_string();
+                }
+            }
+        }
+
+        // Handle the last packet in the file
+        if !current_packet.name.is_empty() && !current_packet.hexdump.is_empty() {
+            if let Ok(packet_bytes) = hex_to_bytes(&current_packet.hexdump) {
+                println!("Sending packet of type: {}", current_packet.name);  // Print the packet type
+                send_packet(tx, packet_bytes);
+            } else {
+                eprintln!("Failed to parse hex string for packet type {}: {}", current_packet.name, current_packet.hexdump);
+            }
+        }
+    } else {
+        eprintln!("Failed to open pkthex file: {}", file_path);
     }
 }
 
